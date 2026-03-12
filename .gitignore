@@ -5,7 +5,7 @@
 *.txt
 
 # AI가 생성한 이미지 캐시
-*.png
-
+user_character.png
+partner_character.png
 # 파이썬 캐시 파일
 __pycache__/
