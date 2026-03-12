@@ -5,17 +5,18 @@ import urllib.request
 from dotenv import load_dotenv
 from openai import OpenAI
 
-# 🚨 환경변수 로드 및 OpenAI 클라이언트 초기화
+# 💡 .env 파일은 로드하지만, 여기서 바로 client를 만들지 않습니다!
 load_dotenv()
-api_key = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=api_key)
 
 def main(page: ft.Page):
     page.title = "MBTI & 연애 궁합 분석기"
     page.theme_mode = ft.ThemeMode.LIGHT
 
+    # 💡 사용자가 입력한 API 키로 생성될 OpenAI 클라이언트 (빈 공간 마련)
+    client = None
+
     # ==========================================
-    # 4. 대화 분석 결과창 (DALL-E 3 이미지 + GPT JSON 분석)
+    # 4. 대화 분석 결과창
     # ==========================================
     def show_analysis_screen(file_path, user_name, gender, relationship):
         page.controls.clear()
@@ -23,13 +24,11 @@ def main(page: ft.Page):
         page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
         page.scroll = ft.ScrollMode.AUTO
         
-        # 1️⃣ 로딩 화면
         loading_ring = ft.ProgressRing(width=50, height=50, stroke_width=5)
         loading_text = ft.Text("🔍 AI가 카톡 대화를 열심히 분석 중입니다...\n(약 10~20초 소요 ⏳)", text_align="center", size=18, weight="bold")
         page.add(ft.Column([loading_ring, loading_text], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER))
         page.update()
 
-        # 2️⃣ GPT 텍스트 분석 (JSON)
         def get_ai_analysis():
             with open(file_path, 'r', encoding='utf-8') as f:
                 chat_content = f.read()
@@ -68,29 +67,25 @@ def main(page: ft.Page):
                 print(f"API 에러: {e}")
                 return None
 
-        # 3️⃣ DALL-E 3 이미지 생성 및 저장 (에셋 폴더 기준 파일명 반환)
         def generate_and_save_image(mbti, nickname, file_name):
             prompt = f"A cute, simple, and lovely 3D cartoon style character representing '{mbti}' personality. The character's vibe perfectly matches the nickname '{nickname}'. Clean solid pastel color background. Highly detailed, trendy 3D icon style."
             try:
                 response = client.images.generate(model="dall-e-3", prompt=prompt, size="1024x1024", quality="standard", n=1)
                 image_url = response.data[0].url
                 
-                # 파일 저장은 절대 경로에 확실하게!
                 current_dir = os.path.dirname(os.path.abspath(__file__))
                 save_path = os.path.join(current_dir, file_name)
                 urllib.request.urlretrieve(image_url, save_path)
                 
-                # Flet 에셋 폴더 기준이므로 파일명만 반환
                 return file_name 
             except Exception as e:
                 print(f"이미지 생성 에러: {e}")
-                return "https://picsum.photos/id/237/300/300" # 에러 시 임시 이미지
+                return "https://picsum.photos/id/237/300/300"
 
-        # --- [실제 실행 흐름] ---
         ai_data = get_ai_analysis()
         if not ai_data:
             page.controls.clear()
-            page.add(ft.Text("❌ 분석 중 에러가 발생했습니다.", color="red"), ft.ElevatedButton("돌아가기", on_click=lambda _: show_selection_screen(file_path, user_name, gender, relationship)))
+            page.add(ft.Text("❌ 분석 중 에러가 발생했습니다. (API 키가 유효한지 확인해주세요)", color="red"), ft.ElevatedButton("돌아가기", on_click=lambda _: show_selection_screen(file_path, user_name, gender, relationship)))
             page.update()
             return
 
@@ -102,7 +97,6 @@ def main(page: ft.Page):
         page.update()
         partner_img_path = generate_and_save_image(ai_data["partner"]["mbti"], ai_data["partner"]["nickname"], "partner_character.png")
 
-        # 4️⃣ 화면 그리기
         page.controls.clear()
         page.vertical_alignment = ft.MainAxisAlignment.START
 
@@ -119,12 +113,8 @@ def main(page: ft.Page):
                     [
                         ft.Text(f"{name} ({role})", size=24, weight="bold", color=ft.Colors.BLACK87),
                         ft.Text(f"\"{data['nickname']}\"", size=20, color=ft.Colors.ORANGE_600, weight="bold", italic=True),
-                        
-                        # 💡 파일명만 쏙! 에셋 폴더 설정 덕분에 브라우저가 알아서 그림을 띄웁니다.
                         ft.Image(src=img_filename, width=300, height=300, fit="cover", border_radius=20),
-                        
                         ft.Text(f"추정 MBTI: {data['mbti']}", size=30, color=ft.Colors.PURPLE_600, weight="bold"),
-                        
                         ft.Row(
                             [
                                 ft.Container(
@@ -134,7 +124,6 @@ def main(page: ft.Page):
                             ], 
                             alignment=ft.MainAxisAlignment.CENTER, wrap=True
                         ),
-                        
                         ft.Divider(height=20, color="transparent"),
                         ft.Text("상세 성향 지수", size=18, weight="bold"),
                         make_mbti_bar("E", "I", data['e']), make_mbti_bar("N", "S", data['n']), make_mbti_bar("F", "T", data['f']), make_mbti_bar("P", "J", data['p']),
@@ -174,7 +163,6 @@ def main(page: ft.Page):
         )
         page.update()
 
-
     # ==========================================
     # 3. 상담 채팅방 화면
     # ==========================================
@@ -188,11 +176,7 @@ def main(page: ft.Page):
         
         conversation_history = [{"role": "system", "content": "You are a professional MBTI analyzer and relationship counselor."}]
 
-        # 상단에 뒤로 가기 버튼 (ElevatedButton으로 에러 방지)
-        back_button = ft.ElevatedButton(
-            "🔙 뒤로 가기", 
-            on_click=lambda _: show_selection_screen(file_path, user_name, gender, relationship)
-        )
+        back_button = ft.ElevatedButton("🔙 뒤로 가기", on_click=lambda _: show_selection_screen(file_path, user_name, gender, relationship))
         header = ft.Row([back_button, ft.Text("상담 챗봇", size=20, weight="bold")])
 
         def show_message(text: str, is_user: bool):
@@ -265,7 +249,6 @@ def main(page: ft.Page):
         page.add(header, chat_log, ft.Row([user_input, send_button]))
         analyze_chat_file()
 
-
     # ==========================================
     # 2. 중간 선택 화면 (라우팅)
     # ==========================================
@@ -306,9 +289,8 @@ def main(page: ft.Page):
         page.add(content_column)
         page.update()
 
-
     # ==========================================
-    # 1. 유저 정보 입력 화면
+    # 1. 유저 정보 입력 화면 (API 키 입력 추가!)
     # ==========================================
     def show_input_screen():
         page.controls.clear()
@@ -316,10 +298,20 @@ def main(page: ft.Page):
         page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
         
         def submit_user_info(e):
+            nonlocal client # 💡 전역 client 변수를 업데이트하겠다고 선언
+            
             target_file = file_input.value.strip()
             name = name_field.value.strip()
             gender = gender_dropdown.value
             relationship = relationship_dropdown.value
+            api_key_input = api_key_field.value.strip()
+            
+            if not api_key_input:
+                api_key_field.error_text = "API 키를 입력해주세요!"
+                page.update()
+                return
+            else:
+                api_key_field.error_text = None # 에러 메시지 초기화
             
             if not target_file:
                 file_input.error_text = "파일명을 입력해주세요!"
@@ -334,8 +326,24 @@ def main(page: ft.Page):
                 page.update()
                 return
 
+            # 💡 입력받은 API 키로 OpenAI 클라이언트 세팅!
+            try:
+                client = OpenAI(api_key=api_key_input)
+            except Exception as ex:
+                api_key_field.error_text = "유효하지 않은 API 키 형식입니다."
+                page.update()
+                return
+
             show_selection_screen(file_path, name, gender, relationship)
 
+        # ✨ API 키 입력 필드 추가 (.env에 값이 있으면 기본값으로 채워줌)
+        api_key_field = ft.TextField(
+            label="OpenAI API Key (sk-...)", 
+            value=os.getenv("OPENAI_API_KEY", ""), 
+            password=True, # 비밀번호처럼 *** 처리
+            can_reveal_password=True, # 눈알 모양 아이콘 눌러서 확인 가능
+            width=400
+        )
         file_input = ft.TextField(label="카카오톡 텍스트 파일명 (예: test.txt)", width=400)
         name_field = ft.TextField(label="Your Name", width=400)
         gender_dropdown = ft.Dropdown(label="Gender", width=400, options=[ft.dropdown.Option("Male"), ft.dropdown.Option("Female")], value="Male")
@@ -346,6 +354,7 @@ def main(page: ft.Page):
             ft.Column(
                 [
                     ft.Text("Step 1. 정보 입력", size=24, weight="bold"),
+                    api_key_field, # 👈 화면 맨 위에 API 키 입력창 추가!
                     file_input, name_field, gender_dropdown, relationship_dropdown, submit_button
                 ], 
                 alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER 
@@ -356,6 +365,6 @@ def main(page: ft.Page):
     # 앱 시작점
     show_input_screen()
 
-# 💡 웹 브라우저 뷰 모드 및 에셋 폴더 권한 부여 (로컬 이미지 띄우기)
+# 💡 웹 브라우저 뷰 모드 및 에셋 폴더 권한 부여
 current_dir = os.path.dirname(os.path.abspath(__file__))
 ft.app(main, view=ft.AppView.WEB_BROWSER, assets_dir=current_dir)
